@@ -10,7 +10,7 @@ const uint32_t MAX_ALLOWED_TIME = 1672531199;
 const uint32_t SECONDS_IN_DAY = 86400;
 const float MAX_TEMP = 60.0f;
 const float MIN_TEMP = -60.0f;
-static uint32_t x_state = 123456789; // seed
+static uint32_t x_state = 123456789;  // seed
 
 namespace fpt {
 
@@ -32,26 +32,36 @@ namespace fpt {
 
         Float(const float f) { setBits(f); }
 
-        Float operator+(const Float& other) const {
+        Float& operator+=(const Float& rhs) {
             const uint32_t ia = restoreToUint32();
-            const uint32_t ib = other.restoreToUint32();
+            const uint32_t ib = rhs.restoreToUint32();
 
             const uint32_t ires = add(ia, ib);
             const float fres = reinterpret_cast<const float&>(ires);
-            Float sum(fres);
+            setBits(fres);
 
-            return sum;
+            return *this;
         }
 
-        Float operator/(const Float& other) {
+        Float& operator/=(const Float& rhs) {
             const uint32_t ia = restoreToUint32();
-            const uint32_t ib = other.restoreToUint32();
+            const uint32_t ib = rhs.restoreToUint32();
 
             const uint32_t ires = divide(ia, ib);
             const float fres = reinterpret_cast<const float&>(ires);
-            Float ratio(fres);
+            setBits(fres);
 
-            return ratio;
+            return *this;
+        }
+
+        friend Float operator+(Float lhs, const Float& rhs) {
+            lhs += rhs;
+            return lhs;
+        }
+
+        friend Float operator/(Float lhs, const Float& rhs) {
+            lhs /= rhs;
+            return lhs;
         }
 
         friend std::istream& operator>>(std::istream& istr, Float& f);
@@ -171,7 +181,7 @@ namespace fpt {
             return result;
         }
 
-        void setBits(float f) {
+        void setBits(const float f) {
             const uint32_t ui = reinterpret_cast<const uint32_t&>(f);
 
             const uint32_t sign_mask = 0x80000000;  // 10000000000000000000000000000000
@@ -262,12 +272,12 @@ namespace {
     std::array<U, 24> workOutHistogram(const std::vector<std::pair<T, U>>& data) {
         std::array<std::pair<U, T>, 24> temp_hist{};
         for (const auto& [time, temp] : data) {
-            temp_hist[time].first = temp_hist[time].first + temp;  // accumulate temperature
+            temp_hist[time].first += temp;  // accumulate temperature
             temp_hist[time].second++;  // store up the measurements for the given hour
         }
 
         for (auto& [temp, num_measur] : temp_hist) {
-            temp = temp / num_measur;  // calc average
+            temp /= num_measur;  // calc average
         }
 
         std::array<U, 24> hist{};
