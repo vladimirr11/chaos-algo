@@ -5,9 +5,12 @@
 #include <omp.h>
 #include <algorithm>
 #include <cassert>
+#include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
 #include <random>
 #include <thread>
 
@@ -277,12 +280,14 @@ static void binarySearch(const AlignedIntArray& hayStack, const AlignedIntArray&
         while (count > 0) {
             const int half = count / 2;
 
+            // asm volatile ("# if cond start");
             if (hayStack[left + half] < value) {
                 left = left + half + 1;
                 count -= half + 1;
             } else {
                 count = half;
             }
+            // asm volatile ("# else cond start");
         }
 
         if (hayStack[left] == value) {
@@ -293,14 +298,62 @@ static void binarySearch(const AlignedIntArray& hayStack, const AlignedIntArray&
     }
 }
 
-int lowerBound(const AlignedIntArray& hayStack, int left, int count, int needle) {
+// permute the original sorted elements in a more cache-friendly layout 
+static int makeEytzinger(int i, int k, const AlignedIntArray& hayStack, AlignedIntArray& eytArr) {
+    if (k <= (int)hayStack.getCount()) {
+        i = makeEytzinger(i, 2 * k, hayStack, eytArr);
+        eytArr[k] = hayStack[i++];
+        i = makeEytzinger(i, 2 * k + 1, hayStack, eytArr);
+    }
+
+    return i;
+}
+
+// searching in eytzinger layout while restoring the original index in the hayStack -> comparable
+// speed or slightly better to the binarySearch above
+[[maybe_unused]] static int lower_Bound(const AlignedIntArray& hayStack,
+                                        const AlignedIntArray& eytzingerArr, int needle) {
+    if (needle > hayStack[(int)hayStack.getCount() - 1]) {
+        return -1;
+    }
+
+    int k = 1; // searck indx in the eytzinger
+    int left = 0; // restore the index in the hayStack
+    int count = eytzingerArr.getCount() - 1;
+
+    while (k <= (int)eytzingerArr.getCount()) {
+        const int half = count / 2;
+
+        __builtin_prefetch(eytzingerArr + k * 16);
+
+        if (eytzingerArr[k] < needle) {  // walk right
+            k = 2 * k + 1;
+            left = half + left + 1;
+            count -= half + 1;
+        } else {  // walk left
+            k = 2 * k;
+            count = half;
+        }
+    }
+
+    if (hayStack[left] == needle) {
+        return left;
+    }
+
+    return -1;
+}
+
+// the same as the binarySearch above with ternary operator replacing the if-else
+static int lowerBound(const AlignedIntArray& hayStack, int left, int count, int needle) {
     if (needle > hayStack[count - 1]) {
         return -1;
     }
-    
+
     while (count > 0) {
         const int half = count >> 1;
+        // asm volatile ("# tern oper start");
         hayStack[left + half] < needle ? left = left + half + 1, count -= half + 1 : count = half;
+        // asm volatile ("# tern oper stop");
     }
 
     return hayStack[left] == needle ? left : -1;
@@ -314,8 +367,11 @@ int lowerBound(const AlignedIntArray& hayStack, int left, int count, int needle)
 /// @param allocator - all allocations must be done trough this allocator, it can be queried for max
 /// allowed allocation size
 static void betterSearch(const AlignedIntArray& hayStack, const AlignedIntArray& needles,
-                         AlignedIntArray& indices, StackAllocator& /*allocator*/) {
-    const int magicSize = 10'000; // below this needles count run single threaded
+                         AlignedIntArray& indices, [[maybe_unused]] StackAllocator& allocator) {
+    // AlignedIntArray eytzingerArr(hayStack.getCount() + 1);
+    // makeEytzinger(0, 1, hayStack, eytzingerArr); <- super slow construction
+
+    const int magicSize = 10'000;  // below this needles count run single threaded
     if (needles.getCount() < magicSize) {
         for (int c = 0; c < needles.getCount(); c++) {
             indices[c] = lowerBound(hayStack, 0, hayStack.getCount(), needles[c]);
@@ -446,3 +502,33 @@ int main() {
 
     return 0;
 }
+
+// static int lowerBountPrefetch(const AlignedIntArray& hayStack, int left, int count, int needle) {
+//     int height = ceil(log2(count + 1));
+//     int dist = 1 << (height - 1);
+
+//     int mid = count - dist;
+//     dist = dist >> 1;
+
+//     int left1 = 0;
+//     int left2 = mid + 1;
+
+//     const int* base = hayStack;
+
+//     while (height > 0) {
+//         if (dist >= 16) {
+//             __builtin_prefetch(reinterpret_cast<const char*>(&base[left1 + dist - 1]));
+//             __builtin_prefetch(reinterpret_cast<const char*>(&base[left2 + dist - 1]));
+//         }
+
+//         if (needle > hayStack[mid]) {
+//             left1 = left2;
+//         }
+//         left2 = left1 + dist;
+//         mid = left1 + dist - 1;
+//         dist = dist >> 1;
+//         height--;
+//     }
+
+//     return hayStack[left1] == needle ? left1 : -1;
+// }
