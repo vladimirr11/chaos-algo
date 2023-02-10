@@ -1,4 +1,3 @@
-#include <algorithm>
 #include <cassert>
 #include <deque>
 #include <fstream>
@@ -100,42 +99,40 @@ private:
 class GracefulTreeValidator {
 public:
     using sharedNodePtr = std::shared_ptr<GenericTree::TreeNode>;
+    using parentChildDeque = std::deque<std::pair<sharedNodePtr, sharedNodePtr>>;
 
     GracefulTreeValidator(GenericTree& _tree) : tree(_tree) {
-        // const size_t doubledTreeSize = (tree.getSize() + 1) * 2;
-        // for (size_t i = 1; i <= doubledTreeSize; ++i) {
-        //     if (i & 1) {
-        //         allowedNodeLabels.insert(i);
-        //     }
-        // }
-        auto root = tree.getRoot();
-        root->label = 1;
-        for (size_t i = 1; i <= tree.getSize() + 1; i++) {
-            allowedNodeLabels.insert(i);
+        const size_t doubledTreeSize = (tree.getSize() + 1) * 2;
+        for (size_t i = 1; i <= doubledTreeSize; ++i) {
+            if (i & 1) {
+                allowedNodeLabels.insert(i);
+            }
         }
     }
 
-    bool validate3() {
-        std::deque<std::pair<sharedNodePtr, sharedNodePtr>> deq;
+    bool isValidTree() {
+        parentChildDeque treeNodesDeq;
         sharedNodePtr root = tree.getRoot();
         root->label = 1;
-        for (size_t c = 0; c < root->descendents.size(); c++) {
-            deq.push_back(std::make_pair(root, tree.getNodeWithId(root->descendents[c]->id)));
+        for (sharedNodePtr& child : root->descendents) {
+            treeNodesDeq.push_back(std::make_pair(root, child));
         }
 
-        if (_validate3(tree.getSize(), deq)) {
+        const size_t startEdgeLabel = tree.getSize() * 2;
+        if (_validate(startEdgeLabel, treeNodesDeq)) {
             return true;
         }
         return false;
      }
 
-    bool _validate3(int edgeLabel, std::deque<std::pair<sharedNodePtr, sharedNodePtr>> deq) {
-        if (edgeLabel == 0 || deq.empty()) {
+private:
+    bool _validate(int edgeLabel, parentChildDeque treeNodesDeq) {
+        if (edgeLabel == 0 || treeNodesDeq.empty()) {
             return true;
         }
         
-        auto [parent, currNode] = deq.front();
-        if (currNode->label == -1) {
+        const auto [parent, child] = treeNodesDeq.front();
+        if (child->label == -1) {
             const int lowLabel = parent->label - edgeLabel;
             const int highLabel = parent->label + edgeLabel;
             int currNodeLabel{};
@@ -147,120 +144,20 @@ public:
                 currNodeLabel = highLabel;
             }
 
-            assert(currNodeLabel != 0 && "Failed labeling");
-            currNode->label = currNodeLabel;
-            if (!currNode->descendents.empty()) {
-                for (size_t i = 0; i < currNode->descendents.size(); i++) {
-                    deq.push_back(std::make_pair(currNode, tree.getNodeWithId(currNode->descendents[i]->id)));
+            assert(currNodeLabel != 0 && "Failed extracting valid label");
+            child->label = currNodeLabel;
+            if (!child->descendents.empty()) {
+                for (sharedNodePtr& childChild : child->descendents) {
+                    treeNodesDeq.push_back(std::make_pair(child, childChild));
                 }
             }
-            deq.pop_front();
+            treeNodesDeq.pop_front();
             usedNodeLabels.insert(currNodeLabel);
-            if (_validate3(edgeLabel -1, deq)) {
+            if (_validate(edgeLabel - 2, treeNodesDeq)) {
                 return true;
             }
             usedNodeLabels.erase(currNodeLabel);
-            deq.push_front(std::make_pair(parent, currNode));
-        }
-
-        return false;
-    }
-
-    bool validate2(int edgeLabel, int startIdx1, int startIdx2) {
-        if (edgeLabel == 0) {
-            return true;
-        }
-
-        for (size_t c = startIdx1; c < tree.getSize(); c++) {
-            auto parent = tree.getNodeWithId(c);
-            if (parent->label != -1) {
-                const int lowLabel = parent->label - edgeLabel;
-                const int highLabel = parent->label + edgeLabel;
-                int currNodeLabel{};
-                if (allowedNodeLabels.find(lowLabel) != allowedNodeLabels.end() &&
-                    usedNodeLabels.find(currNodeLabel) == usedNodeLabels.end()) {
-                    currNodeLabel = lowLabel;
-                } else if (allowedNodeLabels.find(highLabel) != allowedNodeLabels.end() &&
-                           usedNodeLabels.find(currNodeLabel) == usedNodeLabels.end()) {
-                    currNodeLabel = highLabel;
-                }
-
-                assert(currNodeLabel != 0 && "Failed labeling");
-
-                // int highNodeLabel = node->label + edgeLabel;
-                for (size_t i = startIdx2; i < parent->descendents.size(); i++) {
-                    if (allowedNodeLabels.find(currNodeLabel) != allowedNodeLabels.end() &&
-                        usedNodeLabels.find(currNodeLabel) == usedNodeLabels.end()) {
-                        parent->descendents[i]->label = currNodeLabel;
-                        usedNodeLabels.insert(currNodeLabel);
-                        if (validate2(edgeLabel - 1, startIdx1, startIdx2 + 1)) {
-                            return true;
-                        }
-                        parent->descendents[i]->label = -1;
-                        usedNodeLabels.erase(currNodeLabel);
-                    }
-                }
-            }
-        }
-
-        return false;
-    }
-
-    void validate() {
-        std::vector<bool> treeNodes(tree.getSize() + 1, false);
-        sharedNodePtr root = tree.getRoot();
-        root->label = 1;
-        for (size_t c = 0; c < root->descendents.size(); c++) {
-            treeNodes[root->descendents[c]->id] = true;
-        }
-
-        // const int startEdgeLabel = tree.getSize() * 2;
-        const int startEdgeLabel = tree.getSize();
-        if (_validate(startEdgeLabel, root, treeNodes)) {
-            tree.print();
-        } else {
-            std::cout << "No valid labeling" << std::endl;
-        }
-    }
-
-private:
-    bool _validate(int edgeLabel, sharedNodePtr parent, std::vector<bool>& potentialNodes) {
-        if (edgeLabel == 0) {
-            return true;
-        }
-
-        for (size_t i = 0; i < potentialNodes.size(); i++) {
-            if (potentialNodes[i] == true) {
-                sharedNodePtr currNode = tree.getNodeWithId(i);
-                const int lowLabel = parent->label - edgeLabel;
-                const int highLabel = parent->label + edgeLabel;
-                int currNodeLabel{};
-                if (allowedNodeLabels.find(lowLabel) != allowedNodeLabels.end() &&
-                    usedNodeLabels.find(currNodeLabel) == usedNodeLabels.end()) {
-                    currNodeLabel = lowLabel;
-                } else if (allowedNodeLabels.find(highLabel) != allowedNodeLabels.end() &&
-                           usedNodeLabels.find(currNodeLabel) == usedNodeLabels.end()) {
-                    currNodeLabel = highLabel;
-                }
-
-                assert(currNodeLabel != 0 && "Failed labeling");
-
-                currNode->label = currNodeLabel;
-                usedNodeLabels.insert(currNodeLabel);
-                potentialNodes[i] = false;
-                for (size_t j = 0; j < currNode->descendents.size(); j++) {
-                    potentialNodes[currNode->descendents[j]->id] = true;
-                }
-                potentialNodes[i] = true;
-                if (_validate(edgeLabel - 1, parent, potentialNodes)) {
-                    return true;
-                }
-                for (size_t j = 0; j < currNode->descendents.size(); j++) {
-                    potentialNodes[currNode->descendents[j]->id] = true;
-                }
-                potentialNodes[i] = true;
-                usedNodeLabels.erase(currNodeLabel);
-            }
+            treeNodesDeq.push_front(std::make_pair(parent, child));
         }
 
         return false;
@@ -290,18 +187,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
     tree.buildTree(inputFile);
 
     GracefulTreeValidator validator(tree);
-
-    // validator.validate();
-    // if (validator.validate2(tree.getSize(), 0, 0)) {
-    //     tree.print();
-    // } else {
-    //     tree.print();
-    // }
-
-    if (validator.validate3()) {
+    if (validator.isValidTree()) {
         tree.print();
     } else {
-        tree.print();
+        puts("No graceful labeling found");
     }
 
     return 0;
