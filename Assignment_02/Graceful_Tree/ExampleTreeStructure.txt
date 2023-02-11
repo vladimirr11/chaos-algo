@@ -1,0 +1,23 @@
+-1
+0
+0
+0
+2
+2
+4
+4
+5
+3
+6
+---
+Each value in the above column vector represents parent node 
+(its id - from 0 to treeSize) while the index indicates the id of the child node.
+-1 indicates that the root has no parent node.
+The above encoding has the following tree structure: 
+        r
+      / | \
+     n  n  n
+       / \   \
+      n   n   n
+     / \   \   \
+    n   n   n   n
