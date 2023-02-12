@@ -10,7 +10,7 @@ int main(int argc, char* argv[]) {
 
         inputFileName = "TreeStructure.txt";
         std::ofstream treeStructureFile(inputFileName, std::ios::out | std::ios::trunc);
-        if (!treeStructureFile.is_open()) {
+        if (!treeStructureFile.good()) {
             printf("Failed to open %s\n", inputFileName.c_str());
             exit(EXIT_FAILURE);
         }
