@@ -52,7 +52,7 @@ public:
 
 private:
     // Deterministic backtracking search
-    // References:
+    // Used references:
     // [1] W. Fang. A computational approach to the graceful tree conjecture
     // [2] M. Horton. Graceful Trees: Statistics and Algorithms
     bool _validate(int edgeLabel, TreeEdgesDeque& treeEdgesDeq) {
@@ -87,7 +87,7 @@ private:
             if (_validate(edgeLabel - 2, treeEdgesDeq)) {
                 return true;
             }
-            
+
             treeEdgesDeq.emplace_front(TreeEdge(parent, child));
             usedNodeLabels.erase(currNodeLabel);
         }

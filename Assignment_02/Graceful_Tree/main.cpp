@@ -2,18 +2,19 @@
 #include "src/TreeGenerator.h"
 
 int main(int argc, char* argv[]) {
+    std::string inputFileName;
     std::ifstream inputFile;
 
     if (argc == 1) {
         puts("No input file provided. Start generating random tree structure...");
 
-        const char* fileName = "TreeStructure.txt";
-        std::ofstream treeStructureFile(fileName, std::ios::out | std::ios::trunc);
+        inputFileName = "TreeStructure.txt";
+        std::ofstream treeStructureFile(inputFileName, std::ios::out | std::ios::trunc);
         if (!treeStructureFile.is_open()) {
-            printf("Failed to open %s\n", fileName);
+            printf("Failed to open %s\n", inputFileName.c_str());
             exit(EXIT_FAILURE);
         }
-        
+
         const int numVertices = 25;
         TreeGenerator generator(numVertices);
         generator.generateTreeStructure(treeStructureFile);
@@ -21,19 +22,14 @@ int main(int argc, char* argv[]) {
 
         treeStructureFile.close();
 
-        inputFile.open(fileName, std::ios::in);
-        if (!inputFile.is_open()) {
-            printf("Failed to open %s\n", fileName);
-            exit(EXIT_FAILURE);
-        }
-
     } else {
-        const char* fileName = argv[1];
-        inputFile.open(fileName, std::ios::in);
-        if (!inputFile.is_open()) {
-            printf("Failed to open %s\n", fileName);
-            exit(EXIT_FAILURE);
-        }
+        inputFileName = argv[1];
+    }
+
+    inputFile.open(inputFileName, std::ios::in);
+    if (!inputFile.is_open()) {
+        printf("Failed to open %s\n", inputFileName.c_str());
+        exit(EXIT_FAILURE);
     }
 
     const char* outputFileName = "TreeLabeling.txt";
