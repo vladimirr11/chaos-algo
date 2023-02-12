@@ -40,11 +40,11 @@ public:
     }
 
     std::shared_ptr<TreeNode> getNodeWithId(const int targetNodeId) const {
-        assert((size_t)targetNodeId <= treeSize && "Target node greater than tree size");
+        assert((size_t)targetNodeId <= treeSize && "Requested node id greater than tree size");
         return _getNode(root, targetNodeId);
     }
 
-    std::shared_ptr<TreeNode> getRoot() { return root; }
+    std::shared_ptr<TreeNode> getRoot() const { return root; }
 
     size_t getSize() const { return treeSize; }
 
@@ -79,16 +79,16 @@ private:
         return targetNode;
     }
 
-    void _printPreorder(std::ostream& ostr, std::shared_ptr<TreeNode> node) const {
+    void _printPreorder(std::ostream& outputStream, std::shared_ptr<TreeNode> node) const {
         if ((size_t)node->id == treeSize) {
             return;
         }
 
         for (const std::shared_ptr<TreeNode>& child : node->descendents) {
             const int absDiff = std::abs(node->label - child->label);
-            ostr << "|" << node->label << " - " << child->label << "| = " << absDiff
+            outputStream << "|" << node->label << " - " << child->label << "| = " << absDiff
                       << std::endl;
-            _printPreorder(ostr, child);
+            _printPreorder(outputStream, child);
         }
     }
 

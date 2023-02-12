@@ -1,7 +1,7 @@
 #include "src/GracefulTreeValidator.h"
 #include "src/TreeGenerator.h"
 
-int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
+int main(int argc, char* argv[]) {
     std::ifstream inputFile;
 
     if (argc == 1) {
@@ -13,8 +13,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
             printf("Failed to open %s\n", fileName);
             exit(EXIT_FAILURE);
         }
-
-        TreeGenerator generator(15); // 15 vertices tree structure
+        
+        const int numVertices = 25;
+        TreeGenerator generator(numVertices);
         generator.generateTreeStructure(treeStructureFile);
         assert(!treeStructureFile.bad() && "Bad bit set while generating tree structure");
 

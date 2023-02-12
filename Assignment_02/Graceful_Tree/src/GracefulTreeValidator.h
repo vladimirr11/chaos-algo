@@ -6,27 +6,27 @@
 #include "GenericTree.h"
 
 struct TreeEdge {
-    using GenericTreeNode = std::shared_ptr<GenericTree::TreeNode>;
+    using GenericTreeNodePtr = std::shared_ptr<GenericTree::TreeNode>;
 
-    GenericTreeNode parent = nullptr;
-    GenericTreeNode child = nullptr;
+    GenericTreeNodePtr parent = nullptr;
+    GenericTreeNodePtr child = nullptr;
 
     TreeEdge() = default;
 
-    TreeEdge(const GenericTreeNode _parent, const GenericTreeNode _child)
+    TreeEdge(const GenericTreeNodePtr _parent, const GenericTreeNodePtr _child)
         : parent(_parent), child(_child) {}
 };
 
 class GracefulTreeValidator {
 public:
-    using SharedNodePtr = TreeEdge::GenericTreeNode;
+    using SharedNodePtr = TreeEdge::GenericTreeNodePtr;
     using TreeEdgesDeque = std::deque<TreeEdge>;
 
     GracefulTreeValidator() = delete;
 
     GracefulTreeValidator(const GenericTree& _tree) : tree(_tree) {
         const size_t doubledTreeSize = (tree.getSize() + 1) << 1;
-        for (size_t i = 1; i <= doubledTreeSize; ++i) {
+        for (size_t i = 1; i <= doubledTreeSize; i++) {
             if (i & 1) {
                 allowedNodeLabels.insert(i);
             }
@@ -48,13 +48,11 @@ public:
         return false;
     }
 
-    void recordTree(std::ostream& outputStream) {
-        tree.print(outputStream);
-    }
+    void recordTree(std::ostream& outputStream) const { tree.print(outputStream); }
 
 private:
     // Deterministic backtracking search
-    // References: 
+    // References:
     // [1] W. Fang. A computational approach to the graceful tree conjecture
     // [2] M. Horton. Graceful Trees: Statistics and Algorithms
     bool _validate(int edgeLabel, TreeEdgesDeque& treeEdgesDeq) {
@@ -89,9 +87,9 @@ private:
             if (_validate(edgeLabel - 2, treeEdgesDeq)) {
                 return true;
             }
-   
-            usedNodeLabels.erase(currNodeLabel);
+            
             treeEdgesDeq.emplace_front(TreeEdge(parent, child));
+            usedNodeLabels.erase(currNodeLabel);
         }
 
         return false;
