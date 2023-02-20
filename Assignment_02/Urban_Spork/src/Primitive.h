@@ -32,7 +32,7 @@ struct Intersectable {
     /// @param box [out] - the box to expand
     virtual void expandBox(BBox& box) = 0;
 
-    virtual BBox worldBounds() = 0;  //////////////
+    virtual BBox worldBounds() = 0;
 
     virtual ~Intersectable() = default;
 };
@@ -45,14 +45,14 @@ struct Primitive : Intersectable {
     ///	       Used to build acceleration structures
     virtual void onBeforeRender() {}
 
-    BBox worldBounds() override { return box; } //////
-
     /// @brief Default implementation intersecting the bbox of the primitive, overriden if possible
     /// more efficiently
     bool boxIntersect(const BBox& other) override { return !box.boxIntersection(other).isEmpty(); }
 
     /// @brief Default implementation adding the whole bbox, overriden for special cases
     void expandBox(BBox& other) override { other.add(box); }
+
+    BBox worldBounds() override { return box; }
 
     ~Primitive() override = default;
 };

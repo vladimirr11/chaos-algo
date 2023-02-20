@@ -44,7 +44,7 @@ struct ImageData {
 
     PNGImage createPNGData() const {
         PNGImage img(width, height);
-        for (int c = 0; c < pixels.size(); c++) {
+        for (int c = 0; c < (int)pixels.size(); c++) {
             PNGImage::Pixel& out = img.data[c];
             const Color& in = pixels[c];
             float sum = 0.f;

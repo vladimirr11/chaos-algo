@@ -233,7 +233,7 @@ private:
     /// Check if all elements in @currentTask are nullptr
     /// @return true if at least one task is not nullptr, false otherwise
     bool unlockedAllTasksDone() const {
-        for (int c = 0; c < currentTask.size(); c++) {
+        for (int c = 0; c < (int)currentTask.size(); c++) {
             if (currentTask[c]) {
                 return false;
             }

@@ -167,8 +167,8 @@ BBox TriangleMesh::Triangle::worldBounds() {
     const vec3& v0 = owner->vertices[indices[0]];
     const vec3& v1 = owner->vertices[indices[1]];
     const vec3& v2 = owner->vertices[indices[2]];
-    const vec3 min = ::min(v0, ::min(v1, v2));
-    const vec3 max = ::max(v0, ::max(v1, v2));
+    const vec3& min = ::min(v0, ::min(v1, v2));
+    const vec3& max = ::max(v0, ::max(v1, v2));
     BBox bbox = BBox(min, max);
     return bbox;
 }
@@ -183,7 +183,7 @@ void TriangleMesh::onBeforeRender() {
     }
 
     if (!accelerator->isBuilt()) {
-        for (int c = 0; c < faces.size(); c++) {
+        for (int c = 0; c < (int)faces.size(); c++) {
             accelerator->addPrimitive(&faces[c]);
         }
         accelerator->build(IntersectionAccelerator::Purpose::Mesh);
@@ -205,17 +205,17 @@ bool TriangleMesh::loadFromObj(const std::string& objPath) {
                   "next line avoids copy with type alias");
     vertices.swap(reinterpret_cast<std::vector<vec3>&>(inattrib.vertices));
 
-    for (int c = 0; c < vertices.size(); c++) {
+    for (int c = 0; c < (int)vertices.size(); c++) {
         box.add(vertices[c]);
     }
 
-    for (int c = 0; c < inshapes.size(); c++) {
+    for (int c = 0; c < (int)inshapes.size(); c++) {
         int index = 0;
         bool skipMesh = false;
         const tinyobj::mesh_t& mesh = inshapes[c].mesh;
 
         const std::vector<unsigned char>& numFaceVertices = inshapes[c].mesh.num_face_vertices;
-        for (int r = 0; r < numFaceVertices.size(); r++) {
+        for (int r = 0; r < (int)numFaceVertices.size(); r++) {
             if (numFaceVertices[r] != 3) {
                 skipMesh = true;
                 break;
@@ -226,7 +226,7 @@ bool TriangleMesh::loadFromObj(const std::string& objPath) {
         }
 
         faces.reserve(faces.size() + numFaceVertices.size());
-        for (int r = 0; r < numFaceVertices.size(); r++) {
+        for (int r = 0; r < (int)numFaceVertices.size(); r++) {
             const Triangle face{mesh.indices[index++].vertex_index,
                                 mesh.indices[index++].vertex_index,
                                 mesh.indices[index++].vertex_index, this};
@@ -244,7 +244,7 @@ bool TriangleMesh::intersect(const Ray& ray, float tMin, float tMax, Intersectio
         return accelerator->intersect(ray, tMin, tMax, intersection);
     }
     bool haveRes = false;
-    for (int c = 0; c < faces.size(); c++) {
+    for (int c = 0; c < (int)faces.size(); c++) {
         haveRes = haveRes || faces[c].intersect(ray, tMin, tMax, intersection);
     }
     return haveRes;

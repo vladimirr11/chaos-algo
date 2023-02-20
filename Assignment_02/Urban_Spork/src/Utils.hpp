@@ -4,7 +4,7 @@
 #include <cmath>
 #include <ostream>
 #include <random>
-#include <cfloat> // 
+#include <cfloat>
 
 static const int MAX_RAY_DEPTH = 35;
 const float PI = 3.14159265358979323846;
@@ -172,7 +172,7 @@ struct BBox {
 
     BBox() = default;
 
-    BBox(const vec3& _min, const vec3& _max) : min(_min), max(_max) {} // 
+    BBox(const vec3& _min, const vec3& _max) : min(_min), max(_max) {} 
 
     /// @brief Check if the box is "empty", meaning its size has at lease one negative component
     bool isEmpty() const {

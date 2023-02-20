@@ -1,4 +1,4 @@
-#include <random>
+#include <algorithm>
 #include "Mesh.h"
 #include "Primitive.h"
 #include "threading.hpp"
@@ -40,7 +40,7 @@ struct OctTree : IntersectionAccelerator {
     void addPrimitive(Intersectable* prim) override { allPrimitives.push_back(prim); }
 
     void build(Node* n, int currentDepth = 0) {
-        if (currentDepth >= MAX_DEPTH || n->primitives.size() <= MIN_PRIMITIVES) {
+        if (currentDepth >= MAX_DEPTH || (int)n->primitives.size() <= MIN_PRIMITIVES) {
             leafSize = std::max(leafSize, int(n->primitives.size()));
             return;
         }
@@ -55,7 +55,7 @@ struct OctTree : IntersectionAccelerator {
             nodes++;
             memset(child->children, 0, sizeof(child->children));
             child->box = childBoxes[c];
-            for (int r = 0; r < n->primitives.size(); r++) {
+            for (int r = 0; r < (int)n->primitives.size(); r++) {
                 if (n->primitives[r]->boxIntersect(child->box)) {
                     child->primitives.push_back(n->primitives[r]);
                 }
@@ -93,16 +93,9 @@ struct OctTree : IntersectionAccelerator {
         root = new Node();
         root->primitives.swap(allPrimitives);
 
-        // std::vector<BBox> primBounds; /////////////////////////////
-        // primBounds.reserve(root->primitives.size()); /////////////////
-        for (int c = 0; c < root->primitives.size(); c++) {
+        for (int c = 0; c < (int)root->primitives.size(); c++) {
             root->primitives[c]->expandBox(root->box);
-            // primBounds.push_back(root->box); ////////////////////////
         }
-        // int sizeP = root->primitives.size();
-        // auto box0 = primBounds[0];//////////////////////////////////
-        // auto boxLast = primBounds[root->primitives.size() - 1]; //////
-        // auto randBox = primBounds[1456]; ////////////////////////////
 
         build(root);
         printf(" done in %lldms, nodes %d, depth %d, %d leaf size\n", timer.toMs(timer.elapsedNs()),
@@ -113,7 +106,7 @@ struct OctTree : IntersectionAccelerator {
         bool hasHit = false;
 
         if (n->isLeaf()) {
-            for (int c = 0; c < n->primitives.size(); c++) {
+            for (int c = 0; c < (int)n->primitives.size(); c++) {
                 if (n->primitives[c]->intersect(ray, tMin, tMax, intersection)) {
                     tMax = intersection.t;
                     hasHit = true;
@@ -142,23 +135,35 @@ struct OctTree : IntersectionAccelerator {
     ~OctTree() override { clear(); }
 };
 
-////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////
+
 enum class EdgeType { Start, End };
 
 struct BoundEdge {
-    // BoundEdge Public Methods
     BoundEdge() {}
-    BoundEdge(float t, int primNum, bool starting) : t(t), primNum(primNum) {
-        type = starting ? EdgeType::Start : EdgeType::End;
+    BoundEdge(float _t, int _primNum, bool _starting) : t(_t), primNum(_primNum) {
+        eType = _starting ? EdgeType::Start : EdgeType::End;
     }
 
     float t;
     int primNum;
-    EdgeType type;
+    EdgeType eType;
 };
 
 struct KDNode {
-    void InitLeaf(int* primNums, int np, std::vector<int>* primitiveIndices) {
+    union {
+        float splitP;
+        int onePrimitive;
+        int offsetIdx;
+    };
+
+    union {
+        int flags;
+        int numPrimitives;
+        int upperBoundChild;
+    };
+
+    void initLeaf(int* primNums, int np, std::vector<int>* primitiveIndices) {
         flags = 3;
         numPrimitives |= (np << 2);
         // Store primitive ids for leaf node
@@ -172,39 +177,26 @@ struct KDNode {
         }
     }
 
-    void InitInterior(int axis, int ac, float s) {
-        splitAxis = s;
+    void initInterior(int axis, int aboveChild, float split) {
+        splitP = split;
         flags = axis;
-        aboveChild |= (ac << 2);
+        upperBoundChild |= (aboveChild << 2);
     }
 
-    float SplitPos() const { return splitAxis; }
+    float splitPos() const { return splitP; }
     int nPrimitives() const { return numPrimitives >> 2; }
-    int SplitAxis() const { return flags & 3; }
-    bool IsLeaf() const { return (flags & 3) == 3; }
-    int AboveChild() const { return aboveChild >> 2; }
-
-    union {
-        float splitAxis;
-        int onePrimitive;
-        int offsetIdx;
-    };
-
-private:
-    union {
-        int flags;  // interior or leaf node
-        int numPrimitives;
-        int aboveChild;
-    };
+    int splitAxis() const { return flags & 3; }
+    bool isLeaf() const { return (flags & 3) == 3; }
+    int aboveChild() const { return upperBoundChild >> 2; }
 };
 
-struct KdToDo {
+struct KDTreeToDo {
     const KDNode* node;
     float tMin, tMax;
 };
 
-struct BuildTreeLoader {};
-
+// The following implementation of KDTree is the same as the one provided in pbrt-book.
+// TODO: Implement correct worldBounds for instances primitives
 struct KDTree : IntersectionAccelerator {
     KDTree() = default;
 
@@ -214,78 +206,82 @@ struct KDTree : IntersectionAccelerator {
     void build(Purpose purpose) override {
         const char* treePurpose = "";
         switch (purpose) {
-            case Purpose::Instances:
-                maxAllowedPrimitives = 5;
-                treePurpose = " instances";
+            case Purpose::Generic:
+                maxAllowedPrimitives = 1;
+                treePurpose = " generic";
                 break;
             case Purpose::Mesh:
                 maxAllowedPrimitives = 16;
                 treePurpose = " mesh";
+                break;
+            case Purpose::Instances:
+                maxAllowedPrimitives = 4;
+                treePurpose = " instances";
                 break;
             default:
                 printf("Received unsupported purpose");
                 break;
         }
 
-        nAllocatedNodes = nextFreeNode = 0;
+        numAllocatedNodes = nextFreeNode = 0;
 
         if (maxDepth <= 0)
             maxDepth = std::round(8 + 1.3f * log2(int64_t(allPrimitives.size())));
 
-        printf("Building%s KNTree tree with %d primitives... ", treePurpose,
+        printf("Building%s KDTree tree with %d primitives... ", treePurpose,
                int(allPrimitives.size()));
 
         Timer timer;
 
-        // Compute bounds for kd-tree construction
         std::vector<BBox> primBounds;
         primBounds.reserve(allPrimitives.size());
-        for (const auto prim : allPrimitives) {
-            BBox box = prim->worldBounds();
+        for (const auto& prim : allPrimitives) {
+            // TODO: implement correct worldBounds for instances primitives
+            BBox bbox = prim->worldBounds();
             prim->expandBox(bounds);
-            primBounds.push_back(box);
+            primBounds.push_back(bbox);
         }
 
-        // Initialize _primNums_ for kd-tree construction
-        std::unique_ptr<int[]> primNums(new int[allPrimitives.size()]);
+        std::unique_ptr<int[]> primNums = std::make_unique<int[]>(allPrimitives.size());
         for (size_t i = 0; i < allPrimitives.size(); ++i) primNums[i] = i;
 
-        // Allocate working memory for kd-tree construction
-        std::unique_ptr<BoundEdge[]> edges[3];
-        for (int i = 0; i < 3; ++i) edges[i].reset(new BoundEdge[2 * allPrimitives.size()]);
+        std::unique_ptr<BoundEdge[]> primsEdges[3];
+        for (int i = 0; i < 3; ++i)
+            primsEdges[i] = std::make_unique<BoundEdge[]>(2 * allPrimitives.size());
 
-        std::unique_ptr<int[]> lowerBoundPrims(new int[allPrimitives.size()]);
-        std::unique_ptr<int[]> upperBoundPrims(new int[(maxDepth + 1) * allPrimitives.size()]);
+        std::unique_ptr<int[]> lowerBoundPrims = std::make_unique<int[]>(allPrimitives.size());
+        std::unique_ptr<int[]> upperBoundPrims =
+            std::make_unique<int[]>((maxDepth + 1) * allPrimitives.size());
 
-        // Start recursive construction of kd-tree
-        buildTree(0, bounds, primBounds, primNums.get(), allPrimitives.size(), maxDepth, edges,
+        buildTree(0, bounds, primBounds, primNums.get(), allPrimitives.size(), maxDepth, primsEdges,
                   lowerBoundPrims.get(), upperBoundPrims.get());
 
-        printf("Num created nodes %d, done in %lldms, nodes allocated %d, depth %d\n",
-               nextFreeNode - 1, timer.toMs(timer.elapsedNs()), nAllocatedNodes, maxDepth);
+        printf(" done in %lldms, nodes %d, max depth %d, leaf size %d\n",
+               timer.toMs(timer.elapsedNs()), nextFreeNode - 1, maxDepth, numLeafs);
     }
 
 private:
     void buildTree(int nodeNum, const BBox& nodeBounds, const std::vector<BBox>& allPrimBounds,
                    int* primNums, int nPrimitives, int depth,
-                   const std::unique_ptr<BoundEdge[]> edges[3], int* prims0, int* prims1,
-                   int badRefines = 0) {
+                   const std::unique_ptr<BoundEdge[]> primsEdges[3], int* lowerBoundPrims,
+                   int* upperBoundPrims, int badRefines = 0) {
         // Get next free node from _nodes_ array
-        if (nextFreeNode == nAllocatedNodes) {
-            int nNewAllocNodes = std::max(2 * nAllocatedNodes, 512);
-            KDNode* n = new KDNode[nNewAllocNodes];
-            if (nAllocatedNodes > 0) {
-                memcpy(n, nodes, nAllocatedNodes * sizeof(KDNode));
+        if (nextFreeNode == numAllocatedNodes) {
+            int newAllocNodes = std::max(2 * numAllocatedNodes, 512);
+            KDNode* n = new KDNode[newAllocNodes];
+            if (numAllocatedNodes > 0) {
+                memcpy(n, nodes, numAllocatedNodes * sizeof(KDNode));
                 delete[] nodes;
             }
             nodes = n;
-            nAllocatedNodes = nNewAllocNodes;
+            numAllocatedNodes = newAllocNodes;
         }
         ++nextFreeNode;
 
         // Initialize leaf node if termination criteria met
         if (nPrimitives <= maxAllowedPrimitives || depth == 0) {
-            nodes[nodeNum].InitLeaf(primNums, nPrimitives, &primitiveIndices);
+            nodes[nodeNum].initLeaf(primNums, nPrimitives, &primitiveIndices);
+            ++numLeafs;
             return;
         }
 
@@ -293,16 +289,16 @@ private:
         int bestAxis = -1, bestOffset = -1;
         float bestCost = INFINITY;
         float oldCost = intersectCost * float(nPrimitives);
-        vec3 d = nodeBounds.max - nodeBounds.min;
-        float totalSA = 2.f * (d.x * d.y + d.x * d.z + d.y * d.z);
+        vec3 diag = nodeBounds.max - nodeBounds.min;
+        float totalSA = 2.f * (diag.x * diag.y + diag.x * diag.z + diag.y * diag.z);
         float invTotalSA = 1 / totalSA;
 
         // Choose which axis to split along
         int axis;
-        if (d.x > d.y && d.x > d.z)
+        if (diag.x > diag.y && diag.x > diag.z)
             axis = 0;
         else
-            axis = (d.y > d.z) ? 1 : 2;
+            axis = (diag.y > diag.z) ? 1 : 2;
 
         int retries = 0;
 
@@ -311,15 +307,15 @@ private:
         for (int i = 0; i < nPrimitives; ++i) {
             int pn = primNums[i];
             const BBox& bounds = allPrimBounds[pn];
-            edges[axis][2 * i] = BoundEdge(bounds.min[axis], pn, true);
-            edges[axis][2 * i + 1] = BoundEdge(bounds.max[axis], pn, false);
+            primsEdges[axis][2 * i] = BoundEdge(bounds.min[axis], pn, true);
+            primsEdges[axis][2 * i + 1] = BoundEdge(bounds.max[axis], pn, false);
         }
 
         // Sort _edges_ for _axis_
-        std::sort(&edges[axis][0], &edges[axis][2 * nPrimitives],
+        std::sort(&primsEdges[axis][0], &primsEdges[axis][2 * nPrimitives],
                   [](const BoundEdge& e0, const BoundEdge& e1) -> bool {
                       if (e0.t == e1.t)
-                          return (int)e0.type < (int)e1.type;
+                          return (int)e0.eType < (int)e1.eType;
                       else
                           return e0.t < e1.t;
                   });
@@ -327,26 +323,26 @@ private:
         // Compute cost of all splits for _axis_ to find best
         int nBelow = 0, nAbove = nPrimitives;
         for (int i = 0; i < 2 * nPrimitives; ++i) {
-            if (edges[axis][i].type == EdgeType::End)
+            if (primsEdges[axis][i].eType == EdgeType::End)
                 --nAbove;
-            float edgeT = edges[axis][i].t;
+            float edgeT = primsEdges[axis][i].t;
             if (edgeT > nodeBounds.min[axis] && edgeT < nodeBounds.max[axis]) {
                 // Compute cost for split at _i_th edge
 
                 // Compute child surface areas for split at _edgeT_
                 int otherAxis0 = (axis + 1) % 3, otherAxis1 = (axis + 2) % 3;
                 float belowSA =
-                    2 * (d[otherAxis0] * d[otherAxis1] +
-                         (edgeT - nodeBounds.min[axis]) * (d[otherAxis0] + d[otherAxis1]));
+                    2 * (diag[otherAxis0] * diag[otherAxis1] +
+                         (edgeT - nodeBounds.min[axis]) * (diag[otherAxis0] + diag[otherAxis1]));
                 float aboveSA =
-                    2 * (d[otherAxis0] * d[otherAxis1] +
-                         (nodeBounds.max[axis] - edgeT) * (d[otherAxis0] + d[otherAxis1]));
+                    2 * (diag[otherAxis0] * diag[otherAxis1] +
+                         (nodeBounds.max[axis] - edgeT) * (diag[otherAxis0] + diag[otherAxis1]));
 
                 float pBelow = belowSA * invTotalSA;
                 float pAbove = aboveSA * invTotalSA;
-                float eb = (nAbove == 0 || nBelow == 0) ? 0.5 : 0;
-                float cost =
-                    traversalCost + intersectCost * (1 - eb) * (pBelow * nBelow + pAbove * nAbove);
+                float emptyBonus = (nAbove == 0 || nBelow == 0) ? 0.5 : 0;
+                float cost = traversalCost +
+                             intersectCost * (1 - emptyBonus) * (pBelow * nBelow + pAbove * nAbove);
 
                 // Update best split if this is lowest cost so far
                 if (cost < bestCost) {
@@ -355,7 +351,7 @@ private:
                     bestOffset = i;
                 }
             }
-            if (edges[axis][i].type == EdgeType::Start)
+            if (primsEdges[axis][i].eType == EdgeType::Start)
                 ++nBelow;
         }
 
@@ -372,30 +368,31 @@ private:
             ++badRefines;
 
         if ((bestCost > 4 * oldCost && nPrimitives < 32) || bestAxis == -1 || badRefines == 3) {
-            nodes[nodeNum].InitLeaf(primNums, nPrimitives, &primitiveIndices);
+            nodes[nodeNum].initLeaf(primNums, nPrimitives, &primitiveIndices);
+            ++numLeafs;
             return;
         }
 
         // Classify primitives with respect to split
         int n0 = 0, n1 = 0;
         for (int i = 0; i < bestOffset; ++i)
-            if (edges[bestAxis][i].type == EdgeType::Start)
-                prims0[n0++] = edges[bestAxis][i].primNum;
+            if (primsEdges[bestAxis][i].eType == EdgeType::Start)
+                lowerBoundPrims[n0++] = primsEdges[bestAxis][i].primNum;
         for (int i = bestOffset + 1; i < 2 * nPrimitives; ++i)
-            if (edges[bestAxis][i].type == EdgeType::End)
-                prims1[n1++] = edges[bestAxis][i].primNum;
+            if (primsEdges[bestAxis][i].eType == EdgeType::End)
+                upperBoundPrims[n1++] = primsEdges[bestAxis][i].primNum;
 
         // Recursively initialize children nodes
-        float tSplit = edges[bestAxis][bestOffset].t;
+        float tSplit = primsEdges[bestAxis][bestOffset].t;
         BBox bounds0 = nodeBounds, bounds1 = nodeBounds;
         bounds0.max[bestAxis] = bounds1.min[bestAxis] = tSplit;
-        buildTree(nodeNum + 1, bounds0, allPrimBounds, prims0, n0, depth - 1, edges, prims0,
-                  prims1 + nPrimitives, badRefines);
+        buildTree(nodeNum + 1, bounds0, allPrimBounds, lowerBoundPrims, n0, depth - 1, primsEdges,
+                  lowerBoundPrims, upperBoundPrims + nPrimitives, badRefines);
 
         int aboveChild = nextFreeNode;
-        nodes[nodeNum].InitInterior(bestAxis, aboveChild, tSplit);
-        buildTree(aboveChild, bounds1, allPrimBounds, prims1, n1, depth - 1, edges, prims0,
-                  prims1 + nPrimitives, badRefines);
+        nodes[nodeNum].initInterior(bestAxis, aboveChild, tSplit);
+        buildTree(aboveChild, bounds1, allPrimBounds, upperBoundPrims, n1, depth - 1, primsEdges,
+                  lowerBoundPrims, upperBoundPrims + nPrimitives, badRefines);
     }
 
 public:
@@ -415,28 +412,28 @@ public:
         }
 
         vec3 invDir(1 / ray.dir.x, 1 / ray.dir.y, 1 / ray.dir.z);
-        constexpr int maxTodo = 64;
-        KdToDo todo[maxTodo];
+        const int maxTodo = 64;
+        KDTreeToDo todo[maxTodo];
         int todoPos = 0;
 
         bool hit = false;
         const KDNode* node = &nodes[0];
         while (node != nullptr) {
-            if (!node->IsLeaf()) {
+            if (!node->isLeaf()) {
                 // Compute parametric distance along ray to split plane
-                int axis = node->SplitAxis();
-                float tPlane = (node->SplitPos() - ray.origin[axis]) * invDir[axis];
+                int axis = node->splitAxis();
+                float tPlane = (node->splitPos() - ray.origin[axis]) * invDir[axis];
 
                 // Get node children pointers for ray
                 const KDNode *firstChild, *secondChild;
-                int belowFirst = (ray.origin[axis] < node->SplitPos()) ||
-                                 (ray.origin[axis] == node->SplitPos() && ray.dir[axis] <= 0);
+                int belowFirst = (ray.origin[axis] < node->splitPos()) ||
+                                 (ray.origin[axis] == node->splitPos() && ray.dir[axis] <= 0);
 
                 if (belowFirst) {
                     firstChild = node + 1;
-                    secondChild = &nodes[node->AboveChild()];
+                    secondChild = &nodes[node->aboveChild()];
                 } else {
-                    firstChild = &nodes[node->AboveChild()];
+                    firstChild = &nodes[node->aboveChild()];
                     secondChild = node + 1;
                 }
 
@@ -446,7 +443,7 @@ public:
                 else if (tPlane < tMin)
                     node = secondChild;
                 else {
-                    // Enqueue secondChild in todo list
+                    // Enqueue _secondChild_ in todo list
                     todo[todoPos].node = secondChild;
                     todo[todoPos].tMin = tPlane;
                     todo[todoPos].tMax = tMax;
@@ -498,8 +495,9 @@ private:
     int traversalCost = 1;
     int maxAllowedPrimitives = 1;
     int maxDepth = -1;
-    int nAllocatedNodes = 0;
+    int numAllocatedNodes = 0;
     int nextFreeNode = 0;
+    int numLeafs = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -516,7 +514,7 @@ struct BVHTree : IntersectionAccelerator {
 
 AcceleratorPtr makeDefaultAccelerator() {
     // TODO: uncomment or add the acceleration structure you have implemented
-    int intersectCost = 80;
+    int intersectCost = 60;
     int traversalCost = 1;
 
     return AcceleratorPtr(new KDTree(intersectCost, traversalCost));

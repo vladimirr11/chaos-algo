@@ -50,15 +50,18 @@ void Instancer::Instance::expandBox(BBox& other) {
 }
 
 BBox Instancer::Instance::worldBounds() {
-    return primitive->box;
+    BBox bbox;
+    bbox.min = (primitive->box.min * scale) + offset;
+    bbox.max = (primitive->box.max * scale) + offset;
+    return bbox;
 }
 
 void Instancer::onBeforeRender() {
-    for (int c = 0; c < instances.size(); c++) {
+    for (int c = 0; c < (int)instances.size(); c++) {
         instances[c].primitive->onBeforeRender();
     }
     // if (instances.size() < 50) {
-        // return;
+    //     return;
     // }
 
     if (!accelerator) {
@@ -66,7 +69,7 @@ void Instancer::onBeforeRender() {
     }
     if (!accelerator->isBuilt()) {
         accelerator->clear();
-        for (int c = 0; c < instances.size(); c++) {
+        for (int c = 0; c < (int)instances.size(); c++) {
             accelerator->addPrimitive(&instances[c]);
         }
         accelerator->build(IntersectionAccelerator::Purpose::Instances);
@@ -96,7 +99,7 @@ bool Instancer::intersect(const Ray& ray, float tMin, float tMax, Intersection& 
     }
     float closest = tMax;
     bool hasHit = false;
-    for (int c = 0; c < instances.size(); c++) {
+    for (int c = 0; c < (int)instances.size(); c++) {
         Intersection data;
         if (instances[c].intersect(ray, tMin, tMax, data)) {
             if (data.t < closest) {
