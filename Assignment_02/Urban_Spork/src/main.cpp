@@ -119,10 +119,9 @@ void sceneExample(Scene& scene) {
     scene.initImage(800, 600, 4);
     scene.camera.lookAt(90.f, {-0.1f, 5, -0.1f}, {0, 0, 0});
 
-    SharedPrimPtr mesh(
-        new TriangleMesh(MESH_FOLDER "/cube.obj", MaterialPtr(new Lambert{Color(1, 0, 0)})));
     // SharedPrimPtr mesh(
-    //     new TriangleMesh("mesh/cube.obj", MaterialPtr(new Lambert{Color(1, 0, 0)})));
+    //     new TriangleMesh(MESH_FOLDER "/cube.obj", MaterialPtr(new Lambert{Color(1, 0, 0)})));
+    SharedPrimPtr mesh(new TriangleMesh("mesh/cube.obj", MaterialPtr(new Lambert{Color(1, 0, 0)})));
 
     Instancer* instancer = new Instancer;
     instancer->addInstance(mesh, vec3(2, 0, 0));
@@ -161,10 +160,10 @@ void sceneManyHeavyMeshes(Scene& scene) {
         return instanceMaterials[rng];
     };
 
-    SharedPrimPtr mesh(
-        new TriangleMesh(MESH_FOLDER "/dragon.obj", MaterialPtr(new Lambert{Color(1, 0, 0)})));
     // SharedPrimPtr mesh(
-    //     new TriangleMesh("mesh/dragon.obj", MaterialPtr(new Lambert{Color(1, 0, 0)})));
+    //     new TriangleMesh(MESH_FOLDER "/dragon.obj", MaterialPtr(new Lambert{Color(1, 0, 0)})));
+    SharedPrimPtr mesh(
+        new TriangleMesh("mesh/dragon.obj", MaterialPtr(new Lambert{Color(1, 0, 0)})));
 
     Instancer* instancer = new Instancer;
 
@@ -187,9 +186,9 @@ void sceneManySimpleMeshes(Scene& scene) {
     scene.initImage(800, 600, 2);
     scene.camera.lookAt(90.f, {0, 2, count}, {0, 0, 0});
 
-    SharedPrimPtr mesh(
-        new TriangleMesh(MESH_FOLDER "/cube.obj", MaterialPtr(new Lambert{Color(1, 0, 0)})));
-    // SharedPrimPtr mesh(new TriangleMesh("mesh/cube.obj", MaterialPtr(new Lambert{Color(1, 0, 0)})));
+    // SharedPrimPtr mesh(
+    //     new TriangleMesh(MESH_FOLDER "/cube.obj", MaterialPtr(new Lambert{Color(1, 0, 0)})));
+    SharedPrimPtr mesh(new TriangleMesh("mesh/cube.obj", MaterialPtr(new Lambert{Color(1, 0, 0)})));
 
     Instancer* instancer = new Instancer;
 
@@ -206,11 +205,11 @@ void sceneHeavyMesh(Scene& scene) {
     scene.name = "dragon";
     scene.initImage(800, 600, 4);
     scene.camera.lookAt(90.f, {8, 10, 7}, {0, 0, 0});
-    scene.addPrimitive(PrimPtr(new TriangleMesh(MESH_FOLDER "/dragon.obj",
-                                                MaterialPtr(new Lambert{Color(0.2, 0.7,
-                                                0.1)}))));
-    // scene.addPrimitive(PrimPtr(
-    //     new TriangleMesh("mesh/dragon.obj", MaterialPtr(new Lambert{Color(0.2, 0.7, 0.1)}))));
+    // scene.addPrimitive(PrimPtr(new TriangleMesh(MESH_FOLDER "/dragon.obj",
+    //                                             MaterialPtr(new Lambert{Color(0.2, 0.7,
+    //                                             0.1)}))));
+    scene.addPrimitive(PrimPtr(
+        new TriangleMesh("mesh/dragon.obj", MaterialPtr(new Lambert{Color(0.2, 0.7, 0.1)}))));
 }
 
 int main(int argc, char* argv[]) {
@@ -226,7 +225,7 @@ int main(int argc, char* argv[]) {
     int renderCount = sceneCount;
     int firstScene = 0;
     if (argc == 1) {
-        renderCount = 1;
+        // renderCount = 1;
         puts("No arguments, will render only example scene");
     } else {
         const int arg = atoi(argv[1]);
@@ -240,11 +239,12 @@ int main(int argc, char* argv[]) {
     }
 
     const int threadCount = std::max<unsigned>(std::thread::hardware_concurrency() - 1, 1);
+    // const int threadCount = 1;
     ThreadManager tm(threadCount);
     tm.start();
 
     for (int c = 0; c < renderCount; c++) {
-        const int sceneIndex = c + firstScene; 
+        const int sceneIndex = c + firstScene;
         Scene scene;
         printf("Loading scene...\n");
         sceneCreators[sceneIndex](scene);

@@ -61,7 +61,6 @@ bool TriangleMesh::Triangle::intersect(const Ray& ray, float tMin, float tMax,
     const vec3 AC = C - A;
 
     const vec3 normal = cross(AB, AC).normalized();
-    ;
 
     if (dot(ray.dir, normal) > 0) {
         return false;

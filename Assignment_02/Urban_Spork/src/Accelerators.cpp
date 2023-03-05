@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include "Mesh.h"
 #include "Primitive.h"
 #include "threading.hpp"
@@ -135,8 +136,6 @@ struct OctTree : IntersectionAccelerator {
     ~OctTree() override { clear(); }
 };
 
-////////////////////////////////////////////////////////////////////////////////////////
-
 enum class EdgeType { Start, End };
 
 struct BoundEdge {
@@ -196,7 +195,6 @@ struct KDTreeToDo {
 };
 
 // The following implementation of KDTree is the same as the one provided in pbrt-book.
-// TODO: Implement correct worldBounds for instances primitives
 struct KDTree : IntersectionAccelerator {
     KDTree() = default;
 
@@ -220,7 +218,7 @@ struct KDTree : IntersectionAccelerator {
                 break;
             default:
                 printf("Received unsupported purpose");
-                break;
+                exit(1);
         }
 
         numAllocatedNodes = nextFreeNode = 0;
@@ -245,19 +243,19 @@ struct KDTree : IntersectionAccelerator {
         std::unique_ptr<int[]> primNums = std::make_unique<int[]>(allPrimitives.size());
         for (size_t i = 0; i < allPrimitives.size(); ++i) primNums[i] = i;
 
-        std::unique_ptr<BoundEdge[]> primsEdges[3];
+        std::unique_ptr<BoundEdge[]> primEdges[3];
         for (int i = 0; i < 3; ++i)
-            primsEdges[i] = std::make_unique<BoundEdge[]>(2 * allPrimitives.size());
+            primEdges[i] = std::make_unique<BoundEdge[]>(2 * allPrimitives.size());
 
         std::unique_ptr<int[]> lowerBoundPrims = std::make_unique<int[]>(allPrimitives.size());
         std::unique_ptr<int[]> upperBoundPrims =
             std::make_unique<int[]>((maxDepth + 1) * allPrimitives.size());
 
-        buildTree(0, bounds, primBounds, primNums.get(), allPrimitives.size(), maxDepth, primsEdges,
+        buildTree(0, bounds, primBounds, primNums.get(), allPrimitives.size(), maxDepth, primEdges,
                   lowerBoundPrims.get(), upperBoundPrims.get());
 
         printf(" done in %lldms, nodes %d, max depth %d, leaf size %d\n",
-               timer.toMs(timer.elapsedNs()), nextFreeNode - 1, maxDepth, numLeafs);
+               timer.toMs(timer.elapsedNs()), nextFreeNode - 1, maxDepth, numLeaves);
     }
 
 private:
@@ -281,7 +279,7 @@ private:
         // Initialize leaf node if termination criteria met
         if (nPrimitives <= maxAllowedPrimitives || depth == 0) {
             nodes[nodeNum].initLeaf(primNums, nPrimitives, &primitiveIndices);
-            ++numLeafs;
+            ++numLeaves;
             return;
         }
 
@@ -303,7 +301,7 @@ private:
         int retries = 0;
 
     retrySplit:
-        // Initialize edges for _axis_
+        // Initialize edges for axis
         for (int i = 0; i < nPrimitives; ++i) {
             int pn = primNums[i];
             const BBox& bounds = allPrimBounds[pn];
@@ -311,7 +309,7 @@ private:
             primsEdges[axis][2 * i + 1] = BoundEdge(bounds.max[axis], pn, false);
         }
 
-        // Sort _edges_ for _axis_
+        // Sort edges for axis
         std::sort(&primsEdges[axis][0], &primsEdges[axis][2 * nPrimitives],
                   [](const BoundEdge& e0, const BoundEdge& e1) -> bool {
                       if (e0.t == e1.t)
@@ -320,16 +318,16 @@ private:
                           return e0.t < e1.t;
                   });
 
-        // Compute cost of all splits for _axis_ to find best
+        // Compute cost of all splits for axis to find best
         int nBelow = 0, nAbove = nPrimitives;
         for (int i = 0; i < 2 * nPrimitives; ++i) {
             if (primsEdges[axis][i].eType == EdgeType::End)
                 --nAbove;
             float edgeT = primsEdges[axis][i].t;
             if (edgeT > nodeBounds.min[axis] && edgeT < nodeBounds.max[axis]) {
-                // Compute cost for split at _i_th edge
+                // Compute cost for split at ith edge
 
-                // Compute child surface areas for split at _edgeT_
+                // Compute child surface areas for split at edgeT
                 int otherAxis0 = (axis + 1) % 3, otherAxis1 = (axis + 2) % 3;
                 float belowSA =
                     2 * (diag[otherAxis0] * diag[otherAxis1] +
@@ -367,9 +365,9 @@ private:
         if (bestCost > oldCost)
             ++badRefines;
 
-        if ((bestCost > 4 * oldCost && nPrimitives < 32) || bestAxis == -1 || badRefines == 3) {
+        if ((bestCost > 4 * oldCost && nPrimitives < 16) || bestAxis == -1 || badRefines == 3) {
             nodes[nodeNum].initLeaf(primNums, nPrimitives, &primitiveIndices);
-            ++numLeafs;
+            ++numLeaves;
             return;
         }
 
@@ -407,7 +405,9 @@ public:
     bool isBuilt() const override { return nodes != nullptr; }
 
     bool intersect(const Ray& ray, float tMin, float tMax, Intersection& intersection) override {
-        if (!bounds.testIntersect(ray)) {
+        float tNodeMin = 0;
+        float tNodeMax = FLT_MAX;
+        if (!bounds.intersectP(ray, tNodeMin, tNodeMax)) {
             return false;
         }
 
@@ -438,23 +438,23 @@ public:
                 }
 
                 // Advance to next child node, possibly enqueue other child
-                if (tPlane > tMax || tPlane <= 0)
+                if (tPlane > tNodeMax || tPlane <= 0)
                     node = firstChild;
-                else if (tPlane < tMin)
+                else if (tPlane < tNodeMin)
                     node = secondChild;
                 else {
-                    // Enqueue _secondChild_ in todo list
+                    // Enqueue secondChild in todo list
                     todo[todoPos].node = secondChild;
                     todo[todoPos].tMin = tPlane;
-                    todo[todoPos].tMax = tMax;
+                    todo[todoPos].tMax = tNodeMax;
                     ++todoPos;
                     node = firstChild;
-                    tMax = tPlane;
+                    tNodeMax = tPlane; 
                 }
             } else {
                 int nPrimitives = node->nPrimitives();
                 if (nPrimitives == 1) {
-                    const auto p = allPrimitives[node->onePrimitive];
+                    const auto& p = allPrimitives[node->onePrimitive];
                     if (p->intersect(ray, tMin, tMax, intersection)) {
                         tMax = intersection.t;
                         hit = true;
@@ -462,7 +462,7 @@ public:
                 } else {
                     for (int i = 0; i < nPrimitives; ++i) {
                         int index = primitiveIndices[node->offsetIdx + i];
-                        const auto p = allPrimitives[index];
+                        const auto& p = allPrimitives[index];
                         if (p->intersect(ray, tMin, tMax, intersection)) {
                             tMax = intersection.t;
                             hit = true;
@@ -474,8 +474,8 @@ public:
                 if (todoPos > 0) {
                     --todoPos;
                     node = todo[todoPos].node;
-                    tMin = todo[todoPos].tMin;
-                    tMax = todo[todoPos].tMax;
+                    tNodeMin = todo[todoPos].tMin;
+                    tNodeMax = todo[todoPos].tMax;
                 } else
                     break;
             }
@@ -497,10 +497,8 @@ private:
     int maxDepth = -1;
     int numAllocatedNodes = 0;
     int nextFreeNode = 0;
-    int numLeafs = 0;
+    int numLeaves = 0;
 };
-
-////////////////////////////////////////////////////////////////////////////////////////
 
 struct BVHTree : IntersectionAccelerator {
     void addPrimitive(Intersectable* prim) override {}
@@ -514,7 +512,7 @@ struct BVHTree : IntersectionAccelerator {
 
 AcceleratorPtr makeDefaultAccelerator() {
     // TODO: uncomment or add the acceleration structure you have implemented
-    int intersectCost = 60;
+    int intersectCost = 80;
     int traversalCost = 1;
 
     return AcceleratorPtr(new KDTree(intersectCost, traversalCost));

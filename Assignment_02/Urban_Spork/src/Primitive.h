@@ -114,8 +114,8 @@ private:
         void expandBox(BBox& other) override;
         BBox worldBounds() override;
     };
-    std::vector<Instance> instances;
 
+    std::vector<Instance> instances;
     AcceleratorPtr accelerator;
 
 public:

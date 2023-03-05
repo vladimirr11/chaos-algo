@@ -51,8 +51,8 @@ void Instancer::Instance::expandBox(BBox& other) {
 
 BBox Instancer::Instance::worldBounds() {
     BBox bbox;
-    bbox.min = (primitive->box.min * scale) + offset;
-    bbox.max = (primitive->box.max * scale) + offset;
+    bbox.min = ((primitive->box.min * scale) + offset);
+    bbox.max = ((primitive->box.max * scale) + offset);
     return bbox;
 }
 
@@ -67,6 +67,7 @@ void Instancer::onBeforeRender() {
     if (!accelerator) {
         accelerator = makeDefaultAccelerator();
     }
+
     if (!accelerator->isBuilt()) {
         accelerator->clear();
         for (int c = 0; c < (int)instances.size(); c++) {

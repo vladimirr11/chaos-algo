@@ -1,10 +1,11 @@
 #pragma once
 
 #include <cassert>
+#include <cfloat>
 #include <cmath>
+#include <limits>
 #include <ostream>
 #include <random>
-#include <cfloat>
 
 static const int MAX_RAY_DEPTH = 35;
 const float PI = 3.14159265358979323846;
@@ -40,7 +41,7 @@ struct vec3 {
 
     vec3 operator-() const { return vec3(-x, -y, -z); }
 
-    float length() const { return sqrtf(lengthSquare()); } //
+    float length() const { return sqrtf(lengthSquare()); }  //
 
     float lengthSquare() const { return x * x + y * y + z * z; }
 
@@ -165,6 +166,9 @@ inline vec3 randomUnitSphere() {
 /// @return the reflected vector
 inline vec3 reflect(const vec3& v, const vec3& normal) { return v - 2.f * dot(v, normal) * normal; }
 
+static constexpr float machineEpsilon = std::numeric_limits<float>::epsilon() * 0.5;
+inline constexpr float gamma(int n) { return (n * machineEpsilon) / (1 - n * machineEpsilon); }
+
 /// Axis aligned bounding box, needs only min and max point of the box
 struct BBox {
     vec3 min = {FLT_MAX, FLT_MAX, FLT_MAX};
@@ -172,7 +176,7 @@ struct BBox {
 
     BBox() = default;
 
-    BBox(const vec3& _min, const vec3& _max) : min(_min), max(_max) {} 
+    BBox(const vec3& _min, const vec3& _max) : min(_min), max(_max) {}
 
     /// @brief Check if the box is "empty", meaning its size has at lease one negative component
     bool isEmpty() const {
@@ -287,5 +291,29 @@ struct BBox {
             }
         }
         return false;
+    }
+
+    bool intersectP(const Ray& ray, float& t0, float& t1) {
+        for (int i = 0; i < 3; i++) {
+            // Update interval for ith bounding box slab
+            float invRayDir = 1 / ray.dir[i];
+            float tNear = (min[i] - ray.origin[i]) * invRayDir;
+            float tFar = (max[i] - ray.origin[i]) * invRayDir;
+
+            // Update parametric interval from slab intersection t values
+            if (tNear > tFar) {
+                std::swap(tNear, tFar);
+            }
+
+            // Update tFar to ensure robust ray--bounds intersection
+            tFar *= 1 + 2 * gamma(3);
+            t0 = tNear > t0 ? tNear : t0;
+            t1 = tFar < t1 ? tFar : t1;
+            if (t0 > t1) {
+                return false;
+            }
+        }
+
+        return true;
     }
 };
