@@ -1,1 +1,1 @@
-# chaos-algo
+# chaos algo course repo
